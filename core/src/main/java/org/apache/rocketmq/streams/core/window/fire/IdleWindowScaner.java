@@ -34,8 +34,6 @@ public class IdleWindowScaner implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(IdleWindowScaner.class.getName());
 
     private final Integer maxIdleTime;
-    private final Integer allowDelay;
-    private long sessionTimeOut = 0;
     private final ScheduledExecutorService executor;
 
     private final ConcurrentHashMap<WindowKey, TimeType> lastUpdateTime2WindowKey = new ConcurrentHashMap<>(16);
@@ -48,9 +46,8 @@ public class IdleWindowScaner implements AutoCloseable {
     private final ConcurrentHashMap<WindowKey, JoinWindowFire<?, ?, ?, ?>> fireJoinWindowCallback = new ConcurrentHashMap<>(16);
 
 
-    public IdleWindowScaner(Integer maxIdleTime, Integer allowDelay, ScheduledExecutorService executor) {
+    public IdleWindowScaner(Integer maxIdleTime, ScheduledExecutorService executor) {
         this.maxIdleTime = maxIdleTime;
-        this.allowDelay = allowDelay;
         this.executor = executor;
         this.executor.scheduleAtFixedRate(() -> {
             try {
@@ -61,15 +58,11 @@ public class IdleWindowScaner implements AutoCloseable {
         }, 0, 1000, TimeUnit.MILLISECONDS);
     }
 
-    public void initSessionTimeOut(long sessionTimeOut) {
-        this.sessionTimeOut = sessionTimeOut;
-    }
-
-    public void putAccumulatorWindowCallback(WindowKey windowKey, AccumulatorWindowFire<?, ?, ?, ?> function) {
+    public void putAccumulatorWindowCallback(WindowKey windowKey, long watermark, AccumulatorWindowFire<?, ?, ?, ?> function) {
         this.fireWindowCallBack.putIfAbsent(windowKey, function);
         this.lastUpdateTime2WindowKey.compute(windowKey, (key, timeType) -> {
             if (timeType == null) {
-                timeType = new TimeType(Type.AccumulatorWindow, System.currentTimeMillis());
+                timeType = new TimeType(Type.AccumulatorWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
             }
@@ -77,11 +70,11 @@ public class IdleWindowScaner implements AutoCloseable {
         });
     }
 
-    public void putAccumulatorSessionWindowCallback(WindowKey windowKey, AccumulatorSessionWindowFire<?, ?, ?, ?> function) {
+    public void putAccumulatorSessionWindowCallback(WindowKey windowKey, long watermark, AccumulatorSessionWindowFire<?, ?, ?, ?> function) {
         this.fireSessionWindowCallback.putIfAbsent(windowKey, function);
         this.lastUpdateTime2WindowKey.compute(windowKey, (key, timeType) -> {
             if (timeType == null) {
-                timeType = new TimeType(Type.AccumulatorSessionWindow, System.currentTimeMillis());
+                timeType = new TimeType(Type.AccumulatorSessionWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
             }
@@ -89,11 +82,11 @@ public class IdleWindowScaner implements AutoCloseable {
         });
     }
 
-    public void putAggregateWindowCallback(WindowKey windowKey, AggregateWindowFire<?, ?, ?> function) {
+    public void putAggregateWindowCallback(WindowKey windowKey, long watermark, AggregateWindowFire<?, ?, ?> function) {
         this.windowKeyAggregate.putIfAbsent(windowKey, function);
         this.lastUpdateTime2WindowKey.compute(windowKey, (key, timeType) -> {
             if (timeType == null) {
-                timeType = new TimeType(Type.AggregateWindow, System.currentTimeMillis());
+                timeType = new TimeType(Type.AggregateWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
             }
@@ -101,11 +94,11 @@ public class IdleWindowScaner implements AutoCloseable {
         });
     }
 
-    public void putAggregateSessionWindowCallback(WindowKey windowKey, AggregateSessionWindowFire<?, ?, ?> function) {
+    public void putAggregateSessionWindowCallback(WindowKey windowKey, long watermark, AggregateSessionWindowFire<?, ?, ?> function) {
         this.windowKeyAggregateSession.putIfAbsent(windowKey, function);
         this.lastUpdateTime2WindowKey.compute(windowKey, (key, timeType) -> {
             if (timeType == null) {
-                timeType = new TimeType(Type.AggregateSessionWindow, System.currentTimeMillis());
+                timeType = new TimeType(Type.AggregateSessionWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
             }
@@ -113,11 +106,11 @@ public class IdleWindowScaner implements AutoCloseable {
         });
     }
 
-    public void putJoinWindowCallback(WindowKey windowKey, JoinWindowFire<?, ?, ?, ?> function) {
+    public void putJoinWindowCallback(WindowKey windowKey, long watermark, JoinWindowFire<?, ?, ?, ?> function) {
         this.fireJoinWindowCallback.putIfAbsent(windowKey, function);
         this.lastUpdateTime2WindowKey.compute(windowKey, (key, timeType) -> {
             if (timeType == null) {
-                timeType = new TimeType(Type.JoinWindow, System.currentTimeMillis());
+                timeType = new TimeType(Type.JoinWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
             }
@@ -171,9 +164,10 @@ public class IdleWindowScaner implements AutoCloseable {
             switch (type) {
                 case AggregateSessionWindow:
                 case AccumulatorSessionWindow: {
-                    if (idleTime >= sessionTimeOut) {
+                    long watermark = timeType.getWatermark() + idleTime;
+                    if (watermark > windowKey.getWindowEnd()) {
                         try {
-                            doFire(windowKey, type);
+                            doFire(windowKey, type, watermark);
                         } finally {
                             iterator.remove();
                         }
@@ -183,12 +177,12 @@ public class IdleWindowScaner implements AutoCloseable {
                 case AccumulatorWindow:
                 case JoinWindow:
                 case AggregateWindow: {
-                    long windowSize = windowKey.getWindowEnd() - windowKey.getWindowStart();
-                    if (idleTime > this.maxIdleTime && idleTime > windowSize + allowDelay) {
-                        logger.info("updateTime:{}, idleTime:{} > windowSize:{} + allowDelay:{}, window:[{} - {}]",
-                                Utils.format(updateTime), idleTime, windowSize, allowDelay, Utils.format(windowKey.getWindowStart()), Utils.format(windowKey.getWindowEnd()));
+                    long watermark = timeType.getWatermark() + idleTime;
+                    if (idleTime > this.maxIdleTime && watermark > windowKey.getWindowEnd()) {
+                        logger.info("updateTime:{}, watermark:{} > windowEnd:{}, window:[{} - {}]",
+                                Utils.format(updateTime), Utils.format(watermark), Utils.format(windowKey.getWindowEnd()), Utils.format(windowKey.getWindowStart()), Utils.format(windowKey.getWindowEnd()));
                         try {
-                            doFire(windowKey, type);
+                            doFire(windowKey, type, watermark);
                         } finally {
                             iterator.remove();
                         }
@@ -201,8 +195,7 @@ public class IdleWindowScaner implements AutoCloseable {
         }
     }
 
-    private void doFire(WindowKey windowKey, Type type) throws Throwable {
-        long watermark = windowKey.getWindowEnd() + 1;
+    private void doFire(WindowKey windowKey, Type type, long watermark) throws Throwable {
         String operatorName = windowKey.getOperatorName();
 
         switch (type) {
@@ -262,10 +255,12 @@ public class IdleWindowScaner implements AutoCloseable {
     static class TimeType {
         private Type type;
         private long updateTime;
+        private long watermark;
 
-        public TimeType(Type type, long updateTime) {
+        public TimeType(Type type, long updateTime, long watermark) {
             this.type = type;
             this.updateTime = updateTime;
+            this.watermark = watermark;
         }
 
         public Type getType() {
@@ -282,6 +277,14 @@ public class IdleWindowScaner implements AutoCloseable {
 
         public void setUpdateTime(long updateTime) {
             this.updateTime = updateTime;
+        }
+
+        public long getWatermark() {
+            return watermark;
+        }
+
+        public void setWatermark(long watermark) {
+            this.watermark = watermark;
         }
     }
 
