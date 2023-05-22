@@ -22,10 +22,10 @@ public class UserProducer {
         producer.start();
 
 //        long time = 1672560000000L;
-        long time = 1672561000000L;
+        long time = 1672568000000L;
 
         ArrayList<User> result = new ArrayList<>();
-        for (int i = 1; i < 10; i++) {
+        for (int i = 2; i <= 3; i++) {
             User user = new User("小红" + i, i/2, time + 1000*i);
             System.out.println(user);
             result.add(user);

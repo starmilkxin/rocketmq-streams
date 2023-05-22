@@ -65,6 +65,7 @@ public class IdleWindowScaner implements AutoCloseable {
                 timeType = new TimeType(Type.AccumulatorWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
+                timeType.setWatermark(watermark);
             }
             return timeType;
         });
@@ -77,6 +78,7 @@ public class IdleWindowScaner implements AutoCloseable {
                 timeType = new TimeType(Type.AccumulatorSessionWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
+                timeType.setWatermark(watermark);
             }
             return timeType;
         });
@@ -89,6 +91,7 @@ public class IdleWindowScaner implements AutoCloseable {
                 timeType = new TimeType(Type.AggregateWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
+                timeType.setWatermark(watermark);
             }
             return timeType;
         });
@@ -101,6 +104,7 @@ public class IdleWindowScaner implements AutoCloseable {
                 timeType = new TimeType(Type.AggregateSessionWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
+                timeType.setWatermark(watermark);
             }
             return timeType;
         });
@@ -113,6 +117,7 @@ public class IdleWindowScaner implements AutoCloseable {
                 timeType = new TimeType(Type.JoinWindow, System.currentTimeMillis(), watermark);
             } else {
                 timeType.setUpdateTime(System.currentTimeMillis());
+                timeType.setWatermark(watermark);
             }
             return timeType;
         });
@@ -179,8 +184,8 @@ public class IdleWindowScaner implements AutoCloseable {
                 case AggregateWindow: {
                     long watermark = timeType.getWatermark() + idleTime;
                     if (idleTime > this.maxIdleTime && watermark > windowKey.getWindowEnd()) {
-                        logger.info("updateTime:{}, watermark:{} > windowEnd:{}, window:[{} - {}]",
-                                Utils.format(updateTime), Utils.format(watermark), Utils.format(windowKey.getWindowEnd()), Utils.format(windowKey.getWindowStart()), Utils.format(windowKey.getWindowEnd()));
+                        logger.info("idleTime:{}, updateTime:{}, watermark:{} > windowEnd:{}, window:[{} - {}]",
+                                idleTime, Utils.format(updateTime), Utils.format(watermark), Utils.format(windowKey.getWindowEnd()), Utils.format(windowKey.getWindowStart()), Utils.format(windowKey.getWindowEnd()));
                         try {
                             doFire(windowKey, type, watermark);
                         } finally {
