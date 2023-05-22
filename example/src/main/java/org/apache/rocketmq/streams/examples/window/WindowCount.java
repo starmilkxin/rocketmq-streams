@@ -46,6 +46,7 @@ public class WindowCount {
                     User user = JSON.parseObject(source, User.class);
                     return new Pair<>(null, user);
                 })
+                .foreach(System.out::println)
                 .selectTimestamp(User::getTimestamp)
                 .keyBy(User::getAge)
                 .window(WindowBuilder.tumblingWindow(Time.seconds(5)))
