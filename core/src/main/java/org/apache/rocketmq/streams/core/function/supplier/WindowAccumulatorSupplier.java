@@ -121,6 +121,7 @@ public class WindowAccumulatorSupplier<K, V, R, OV> implements Supplier<Processo
             long time = this.context.getDataTime();
 
             long watermark = this.watermark(time - allowDelay, stateTopicMessageQueue);
+            logger.info("watermark:{}, data time: {}", Utils.format(watermark), Utils.format(time));
             if (time < watermark) {
                 //已经触发，丢弃数据
                 logger.warn("discard data:[{}], window has been fired. time of data:{}, watermark:{}",

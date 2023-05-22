@@ -17,6 +17,7 @@
 package org.apache.rocketmq.streams.core.window.fire;
 
 import org.apache.rocketmq.streams.core.common.Constant;
+import org.apache.rocketmq.streams.core.util.Utils;
 import org.apache.rocketmq.streams.core.window.StreamType;
 import org.apache.rocketmq.streams.core.window.WindowKey;
 import org.slf4j.Logger;
@@ -25,7 +26,6 @@ import org.slf4j.LoggerFactory;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -34,6 +34,7 @@ public class IdleWindowScaner implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(IdleWindowScaner.class.getName());
 
     private final Integer maxIdleTime;
+    private final Integer allowDelay;
     private long sessionTimeOut = 0;
     private final ScheduledExecutorService executor;
 
@@ -47,8 +48,9 @@ public class IdleWindowScaner implements AutoCloseable {
     private final ConcurrentHashMap<WindowKey, JoinWindowFire<?, ?, ?, ?>> fireJoinWindowCallback = new ConcurrentHashMap<>(16);
 
 
-    public IdleWindowScaner(Integer maxIdleTime, ScheduledExecutorService executor) {
+    public IdleWindowScaner(Integer maxIdleTime, Integer allowDelay, ScheduledExecutorService executor) {
         this.maxIdleTime = maxIdleTime;
+        this.allowDelay = allowDelay;
         this.executor = executor;
         this.executor.scheduleAtFixedRate(() -> {
             try {
@@ -182,7 +184,9 @@ public class IdleWindowScaner implements AutoCloseable {
                 case JoinWindow:
                 case AggregateWindow: {
                     long windowSize = windowKey.getWindowEnd() - windowKey.getWindowStart();
-                    if (idleTime > this.maxIdleTime && idleTime > windowSize) {
+                    if (idleTime > this.maxIdleTime && idleTime > windowSize + allowDelay) {
+                        logger.info("updateTime:{}, idleTime:{} > windowSize:{} + allowDelay:{}, window:[{} - {}]",
+                                Utils.format(updateTime), idleTime, windowSize, allowDelay, Utils.format(windowKey.getWindowStart()), Utils.format(windowKey.getWindowEnd()));
                         try {
                             doFire(windowKey, type);
                         } finally {
